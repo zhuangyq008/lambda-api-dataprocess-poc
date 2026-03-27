@@ -20,7 +20,7 @@ error() { echo -e "${RED}[ERROR]${NC} $*" >&2; exit 1; }
 #==============================================================================
 STACK_NAME="${STACK_NAME:-klaviyo-events-etl}"
 ENVIRONMENT="${ENVIRONMENT:-prod}"
-AWS_REGION="${AWS_REGION:-ap-southeast-1}"
+AWS_REGION="${AWS_REGION:-us-east-1}"
 METRIC_ID="${METRIC_ID:-}"
 KLAVIYO_API_KEY="${KLAVIYO_API_KEY:-}"
 KLAVIYO_SECRET_NAME="${KLAVIYO_SECRET_NAME:-klaviyo-api-key}"

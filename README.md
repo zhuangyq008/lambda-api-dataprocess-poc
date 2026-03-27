@@ -49,7 +49,7 @@ The script will:
 ```bash
 METRIC_ID=XE6fgM \
 KLAVIYO_API_KEY=pk_xxxxx \
-AWS_REGION=ap-southeast-1 \
+AWS_REGION=us-east-1 \
 ENVIRONMENT=prod \
 ./deploy.sh
 ```
@@ -60,7 +60,7 @@ ENVIRONMENT=prod \
 |-----------------------|----------------------|-----------------------------------------------|
 | `STACK_NAME`          | `klaviyo-events-etl` | CloudFormation stack name                     |
 | `ENVIRONMENT`         | `prod`               | Environment tag (`dev` / `staging` / `prod`)  |
-| `AWS_REGION`          | `ap-southeast-1`     | AWS region to deploy into                     |
+| `AWS_REGION`          | `us-east-1`          | AWS region to deploy into                     |
 | `METRIC_ID`           | *(required)*         | Klaviyo metric ID to fetch events for         |
 | `KLAVIYO_API_KEY`     | *(required)*         | Klaviyo Private API Key                       |
 | `KLAVIYO_SECRET_NAME` | `klaviyo-api-key`    | Name of the Secrets Manager secret            |
@@ -95,7 +95,7 @@ After deploy, trigger the Lambda immediately (without waiting for the scheduled 
 ```bash
 aws lambda invoke \
     --function-name klaviyo-events-fetcher-prod \
-    --region ap-southeast-1 \
+    --region us-east-1 \
     response.json && cat response.json
 ```
 
@@ -147,12 +147,12 @@ To remove all deployed resources:
 # Delete the CloudFormation stack (Lambda, S3 bucket, EventBridge rule, alarms)
 aws cloudformation delete-stack \
     --stack-name klaviyo-events-etl \
-    --region ap-southeast-1
+    --region us-east-1
 
 # Delete the Secrets Manager secret
 aws secretsmanager delete-secret \
     --secret-id klaviyo-api-key \
-    --region ap-southeast-1
+    --region us-east-1
 ```
 
 > **Note:** The S3 bucket must be empty before CloudFormation can delete it.
