@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Klaviyo Events API Data Ingestion Pipeline
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+  KlaviyoApiKeySecretName:
+    Type: String
+    Description: Name of the Secrets Manager secret containing the Klaviyo API Key
+  MetricId:
+    Type: String
+    Description: Klaviyo metric ID to fetch events for
+  S3Prefix:
+    Type: String
+    Default: klaviyo/events
+    Description: S3 key prefix for stored data
+  PageSize:
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 100
+    Description: Number of records per API page
+  LookbackDays:
+    Type: Number
+    Default: 1
+    MinValue: 1
+    Description: Number of days to look back for data
+  KlaviyoApiRevision:
+    Type: String
+    Default: "2025-04-15"
+    Description: Klaviyo API revision header value
+  ScheduleExpression:
+    Type: String
+    Default: "cron(0 0 * * ? *)"
+    Description: EventBridge schedule expression (default UTC 00:00 = Beijing 08:00)
+
+Globals:
+  Function:
+    Timeout: 300
+    Runtime: python3.12
+    Architectures:
+      - arm64
+
+Resources:
+  EventsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "shokz-klaviyo-events-${Environment}-${AWS::AccountId}"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - StorageClass: STANDARD_IA
+                TransitionInDays: 90
+
+  KlaviyoEventsFetcher:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub "klaviyo-events-fetcher-${Environment}"
+      Handler: lambda_function.lambda_handler
+      CodeUri: src/
+      MemorySize: 256
+      Environment:
+        Variables:
+          KLAVIYO_API_KEY_SECRET_NAME: !Ref KlaviyoApiKeySecretName
+          KLAVIYO_API_REVISION: !Ref KlaviyoApiRevision
+          METRIC_ID: !Ref MetricId
+          S3_BUCKET_NAME: !Ref EventsBucket
+          S3_PREFIX: !Ref S3Prefix
+          PAGE_SIZE: !Ref PageSize
+          LOOKBACK_DAYS: !Ref LookbackDays
+      Policies:
+        - S3WritePolicy:
+            BucketName: !Ref EventsBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${KlaviyoApiKeySecretName}-*"
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Name: !Sub "klaviyo-events-daily-sync-${Environment}"
+            Schedule: !Ref ScheduleExpression
+            Enabled: true
+
+  FetcherLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/klaviyo-events-fetcher-${Environment}"
+      RetentionInDays: 30
+
+  FetcherErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub "klaviyo-events-fetcher-errors-${Environment}"
+      AlarmDescription: Alarm when Lambda function errors occur
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref KlaviyoEventsFetcher
+      Statistic: Sum
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  FunctionArn:
+    Description: Lambda Function ARN
+    Value: !GetAtt KlaviyoEventsFetcher.Arn
+  BucketName:
+    Description: S3 Bucket Name
+    Value: !Ref EventsBucket
+  ScheduleRule:
+    Description: EventBridge Schedule
+    Value: !Ref ScheduleExpression
